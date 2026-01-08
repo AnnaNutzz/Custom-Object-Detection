@@ -1,0 +1,25 @@
+# Configuration
+model:
+  input_size: 300 # 300x300 input (SSD standard)
+  num_classes: 6 # 5 classes + background
+
+  # Backbone channels
+  backbone_filters: [32, 64, 128, 256, 512]
+
+  # Detection settings
+  anchor_scales: [0.1, 0.2, 0.37, 0.54, 0.71, 0.88]
+  anchor_ratios: [1.0, 2.0, 0.5]
+
+data:
+  classes: ["person", "car", "dog", "bicycle", "chair"]
+  dataset_path: "data/VOCdevkit/VOC2007"
+
+training:
+  batch_size: 8
+  epochs: 10
+  learning_rate: 0.001
+  weight_decay: 0.0005
+
+inference:
+  confidence_threshold: 0.5
+  nms_threshold: 0.45
