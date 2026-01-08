@@ -1,7 +1,7 @@
 """
 Real-time Detection Demo
 
-Runs detection on webcam/video (display only, no recording).
+Runs detection on video and saves output video file.
 """
 
 import os
@@ -74,7 +74,7 @@ def draw_detections(image, detections, classes=CLASSES, colors=COLORS):
 
 
 def run_demo(args):
-    """Run real-time detection demo (display only)"""
+    """Run detection demo and save output video"""
     
     print("=" * 50)
     print("SSD Object Detector - Demo")
@@ -106,14 +106,25 @@ def run_demo(args):
     width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
     height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
     fps_video = cap.get(cv2.CAP_PROP_FPS) or 30
+    total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
     
     print(f"Source: {source} ({width}x{height} @ {fps_video:.1f} FPS)")
+    print(f"Total frames: {total_frames}")
+    
+    # Setup output video
+    os.makedirs('outputs', exist_ok=True)
+    output_path = args.output or 'outputs/demo_output.mp4'
+    fourcc = cv2.VideoWriter_fourcc(*'mp4v')
+    out = cv2.VideoWriter(output_path, fourcc, fps_video, (width, height))
+    
+    print(f"Output: {output_path}")
+    print("\nProcessing...")
     
     frame_count = 0
     fps_display = 0
     fps_timer = time.time()
-    
-    print("\nPress 'q' to quit")
+    total_inference_time = 0
+    processed_frames = 0
     
     while True:
         ret, frame = cap.read()
@@ -130,6 +141,7 @@ def run_demo(args):
         start = time.time()
         cls_preds, box_preds = model(input_img, training=False)
         inference_time = time.time() - start
+        total_inference_time += inference_time
         
         # Decode
         detections = model.decode_predictions(
@@ -143,6 +155,7 @@ def run_demo(args):
         
         # FPS counter
         frame_count += 1
+        processed_frames += 1
         if time.time() - fps_timer >= 1.0:
             fps_display = frame_count
             frame_count = 0
@@ -153,22 +166,34 @@ def run_demo(args):
             cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 0), 2
         )
         
-        # Display
-        cv2.imshow('SSD Detection', output_frame)
+        # Write to output video
+        out.write(output_frame)
         
-        if cv2.waitKey(1) & 0xFF == ord('q'):
-            break
+        # Progress
+        if processed_frames % 50 == 0:
+            progress = processed_frames / total_frames * 100 if total_frames > 0 else 0
+            print(f"  Processed: {processed_frames}/{total_frames} ({progress:.1f}%)")
     
     cap.release()
-    cv2.destroyAllWindows()
+    out.release()
     
-    print("\nDemo complete!")
+    # Stats
+    avg_fps = processed_frames / total_inference_time if total_inference_time > 0 else 0
+    
+    print("\n" + "=" * 50)
+    print("Demo Complete!")
+    print("=" * 50)
+    print(f"Frames processed: {processed_frames}")
+    print(f"Average FPS: {avg_fps:.1f}")
+    print(f"Output saved: {output_path}")
 
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='SSD Detection Demo')
     parser.add_argument('--source', type=str, default='0',
                        help='Video source (0=webcam, or video path)')
+    parser.add_argument('--output', type=str, default='outputs/demo_output.mp4',
+                       help='Output video path')
     parser.add_argument('--checkpoint', type=str,
                        default='outputs/checkpoints/best_model.weights.h5',
                        help='Model checkpoint')

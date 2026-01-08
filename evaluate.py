@@ -2,6 +2,7 @@
 Evaluation Script
 
 Calculate mAP, FPS, and model size.
+Supports both TFDS and traditional VOC format.
 """
 
 import os
@@ -14,7 +15,7 @@ from collections import defaultdict
 from tqdm import tqdm
 
 from model import SSDDetector
-from dataset import load_voc_dataset, CLASSES
+from dataset import load_voc_dataset, load_voc_tfds, CLASSES
 
 
 def compute_iou_single(box1, box2):
@@ -44,7 +45,7 @@ def calculate_ap(precision, recall):
 
 
 def evaluate_model(model, test_data, input_size=300, 
-                   conf_thresh=0.5, iou_thresh=0.5):
+                   conf_thresh=0.5, iou_thresh=0.5, use_tfds=False):
     """
     Evaluate mAP on test set.
     
@@ -55,11 +56,17 @@ def evaluate_model(model, test_data, input_size=300,
     all_predictions = defaultdict(list)  # class -> [(conf, image_id, box)]
     all_ground_truths = defaultdict(list)  # class -> [(image_id, box)]
     
-    for img_idx, (img_path, gt_boxes, gt_labels) in enumerate(tqdm(test_data, desc='Evaluating')):
-        # Load and preprocess image
-        image = cv2.imread(img_path)
-        image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
-        h, w = image.shape[:2]
+    for img_idx, data in enumerate(tqdm(test_data, desc='Evaluating')):
+        if use_tfds:
+            # TFDS format: (image_array, boxes, labels)
+            image, gt_boxes, gt_labels = data
+            h, w = image.shape[:2]
+        else:
+            # Traditional format: (image_path, boxes, labels)
+            img_path, gt_boxes, gt_labels = data
+            image = cv2.imread(img_path)
+            image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
+            h, w = image.shape[:2]
         
         image_resized = cv2.resize(image, (input_size, input_size))
         image_input = image_resized.astype(np.float32) / 255.0
@@ -186,26 +193,42 @@ def main(args):
     else:
         print("WARNING: No checkpoint loaded, using random weights")
     
-    # Load test data
-    test_data = load_voc_dataset(args.data_path, 'val')
+    # Load test data - try TFDS first
+    print("\nLoading test data...")
+    use_tfds = False
+    test_data = load_voc_tfds('data', 'validation')
+    
+    if test_data:
+        use_tfds = True
+        # Use a subset for faster evaluation
+        test_data = test_data[:200]
+        print(f"Using TFDS format: {len(test_data)} samples")
+    else:
+        # Fallback to traditional format
+        test_data = load_voc_dataset(args.data_path, 'val')
+        if not test_data:
+            test_data = load_voc_dataset(args.data_path, 'trainval')
+            if test_data:
+                test_data = test_data[:200]  # Use subset
     
     if len(test_data) == 0:
-        print("No test data found!")
-        return
-    
-    # Evaluate mAP
-    print("\n--- mAP Evaluation ---")
-    mAP, aps = evaluate_model(model, test_data)
-    
-    print(f"\nmAP@0.5: {mAP * 100:.2f}%")
-    print("\nPer-class AP:")
-    for cls, ap in aps.items():
-        print(f"  {cls}: {ap * 100:.2f}%")
+        print("No test data available. Skipping mAP evaluation.")
+        print("Running FPS and size measurements only...\n")
+        mAP, aps = 0, {}
+    else:
+        # Evaluate mAP
+        print("\n--- mAP Evaluation ---")
+        mAP, aps = evaluate_model(model, test_data, use_tfds=use_tfds)
+        
+        print(f"\nmAP@0.5: {mAP * 100:.2f}%")
+        print("\nPer-class AP:")
+        for cls, ap in aps.items():
+            print(f"  {cls}: {ap * 100:.2f}%")
     
     # Measure FPS
     print("\n--- FPS Measurement ---")
     fps_gpu = measure_fps(model)
-    print(f"FPS (GPU): {fps_gpu:.1f}")
+    print(f"FPS (Current Device): {fps_gpu:.1f}")
     
     # CPU FPS
     with tf.device('/CPU:0'):
