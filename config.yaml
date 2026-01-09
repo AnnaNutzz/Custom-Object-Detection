@@ -16,10 +16,16 @@ data:
 
 training:
   batch_size: 8
-  epochs: 5
+  epochs: 20
   learning_rate: 0.001
   weight_decay: 0.0005
 
 inference:
   confidence_threshold: 0.5
   nms_threshold: 0.45
+
+# Resume training from checkpoint
+resume:
+  checkpoint_path: "outputs/checkpoints/best_model.weights.h5"
+  start_epoch: 15 # Resume from epoch 16 (0-indexed: 15 means epoch 16)
+  best_val_loss: 3.3424 # Your best val_loss from epoch 14

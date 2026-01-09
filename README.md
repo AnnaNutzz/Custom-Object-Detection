@@ -52,7 +52,9 @@ Downloads PASCAL VOC 2007 via TensorFlow Datasets (~800 MB).
 python train.py
 ```
 
-Trains for 10 epochs (configurable in `config.yaml`). Checkpoints saved to `outputs/checkpoints/`.
+Trains for 20 epochs (~6-8 hours on CPU). Checkpoints saved to `outputs/checkpoints/`.
+
+> **Resume Training**: If interrupted, configure `resume` section in `config.yaml` to continue from a checkpoint.
 
 ### 4. Evaluate Performance
 
@@ -92,6 +94,8 @@ Press `q` to quit the demo.
 
 Screen recordings of training, evaluation, and real-time detection are available in the repository.
 
+> **Demo Threshold**: Uses 0.3 confidence threshold to emphasize recall and visualize early-stage learning. Since the model is trained from scratch and confidence calibration is still developing, lower thresholds are useful for qualitative evaluation. Precision improves with additional training and threshold tuning.
+
 ## Technical Report
 
 See [report/REPORT.md](report/REPORT.md) for:
@@ -111,12 +115,12 @@ model:
   num_classes: 6 # 5 classes + background
 
 training:
-  batch_size: 8 # Adjust based on GPU memory
-  epochs: 10 # Training epochs
+  batch_size: 8 # Adjust based on memory
+  epochs: 20 # Training epochs (~6-8 hours on CPU)
   learning_rate: 0.001 # Initial learning rate
 
 inference:
-  confidence_threshold: 0.5
+  confidence_threshold: 0.3 # Lower for early-stage models
   nms_threshold: 0.45
 ```
 

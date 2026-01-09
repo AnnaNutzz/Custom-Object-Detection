@@ -11,6 +11,14 @@ This report details the implementation of a **Single-Shot MultiBox Detector (SSD
 - Evaluate: mAP, FPS, model size
 - Demonstrate real-time detection
 
+## Demo
+
+[Demo Video](https://drive.google.com/file/d/1kaKGhfCsm88bSJdHnoweMmzxm7pGj2_C/view?usp=sharing)
+
+Screen recordings of training, evaluation, and real-time detection are available in the repository.
+
+**Demo Confidence Threshold**: The demo uses a confidence threshold of 0.3 to emphasize recall and visualize early-stage learning. Since the model is trained from scratch and confidence calibration is still developing, lower thresholds are useful for qualitative evaluation. Precision improves with additional training and threshold tuning.
+
 ---
 
 ## 2. Architecture Design
@@ -127,14 +135,27 @@ A.Compose([
 
 | Parameter         | Value          | Rationale                  |
 | ----------------- | -------------- | -------------------------- |
-| Batch Size        | 8              | Fits in 4GB VRAM           |
-| Epochs            | 50             | Sufficient for convergence |
+| Batch Size        | 8              | Fits in CPU memory         |
+| Epochs            | 20             | Practical for CPU training |
 | Optimizer         | SGD + Momentum | Stable for detection       |
 | Learning Rate     | 0.001          | Standard for detection     |
 | Weight Decay      | 0.0005         | Regularization             |
 | Gradient Clipping | 10.0           | Prevent explosion          |
 
-### 4.3 Training Tips for From-Scratch Training
+### 4.3 Training Notes
+
+**Training Duration**: ~6-8 hours total on CPU.
+
+**Resume Support**: Training was interrupted mid-epoch 16 due to system sleep. The script supports checkpoint resumption via `config.yaml`:
+
+```yaml
+resume:
+  checkpoint_path: "outputs/checkpoints/best_model.weights.h5"
+  start_epoch: 15
+  best_val_loss: 3.3424
+```
+
+### 4.4 Training Tips for From-Scratch Training
 
 1. **Longer warmup**: First epoch uses 0.1× learning rate
 2. **Gradient clipping**: Essential when no pretrained weights

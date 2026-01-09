@@ -17,7 +17,7 @@ from dataset import load_voc_dataset, load_voc_tfds, VOCDataGenerator, CLASSES
 
 
 def setup_gpu():
-    """Configure GPU memory growth"""
+    """Configure GPU memory growth if available"""
     gpus = tf.config.list_physical_devices('GPU')
     if gpus:
         try:
@@ -26,6 +26,8 @@ def setup_gpu():
             print(f"Found {len(gpus)} GPU(s)")
         except RuntimeError as e:
             print(f"GPU setup error: {e}")
+    else:
+        print("No GPU found - training on CPU")
 
 
 def train(config_path='config.yaml'):
@@ -124,6 +126,7 @@ def train(config_path='config.yaml'):
     
     # Training metrics
     train_loss_metric = keras.metrics.Mean(name='train_loss')
+    val_loss_metric = keras.metrics.Mean(name='val_loss')
     
     # Checkpoint directory
     checkpoint_dir = 'outputs/checkpoints'
@@ -134,27 +137,43 @@ def train(config_path='config.yaml'):
     summary_writer = tf.summary.create_file_writer(log_dir)
     
     # Training step
-    @tf.function
     def train_step(images, targets):
         with tf.GradientTape() as tape:
             cls_preds, box_preds = model(images, training=True)
             loss = loss_fn((targets[0], targets[1]), (cls_preds, box_preds))
         
         gradients = tape.gradient(loss, model.trainable_variables)
-        
-        # Gradient clipping
         gradients, _ = tf.clip_by_global_norm(gradients, 10.0)
-        
         optimizer.apply_gradients(zip(gradients, model.trainable_variables))
+        return loss
+    
+    # Validation step
+    def val_step(images, targets):
+        cls_preds, box_preds = model(images, training=False)
+        loss = loss_fn((targets[0], targets[1]), (cls_preds, box_preds))
         return loss
     
     # Training loop
     print("\nStarting training...")
     best_val_loss = float('inf')
+    start_epoch = config.get('resume', {}).get('start_epoch', 0)
     
-    for epoch in range(epochs):
+    # Resume from checkpoint if specified
+    resume_path = config.get('resume', {}).get('checkpoint_path', None)
+    if resume_path and os.path.exists(resume_path):
+        print(f"\nResuming from checkpoint: {resume_path}")
+        print(f"Starting from epoch {start_epoch + 1}")
+        model.load_weights(resume_path)
+        best_val_loss = config.get('resume', {}).get('best_val_loss', float('inf'))
+        print(f"Previous best val_loss: {best_val_loss:.4f}")
+    
+    import time
+    
+    for epoch in range(start_epoch, epochs):
+        epoch_start = time.time()
         print(f"\nEpoch {epoch + 1}/{epochs}")
         train_loss_metric.reset_state()
+        val_loss_metric.reset_state()
         
         # Train
         progress = tf.keras.utils.Progbar(len(train_gen))
@@ -165,21 +184,21 @@ def train(config_path='config.yaml'):
         
         train_loss = train_loss_metric.result().numpy()
         
-        # Validate
-        val_losses = []
+        # Validate (now compiled and faster)
         for images, targets in val_gen:
-            cls_preds, box_preds = model(images, training=False)
-            val_loss = loss_fn((targets[0], targets[1]), (cls_preds, box_preds))
-            val_losses.append(val_loss.numpy())
+            val_loss = val_step(images, targets)
+            val_loss_metric.update_state(val_loss)
         
-        val_loss = np.mean(val_losses) if val_losses else 0
+        val_loss = val_loss_metric.result().numpy()
+        epoch_time = time.time() - epoch_start
         
-        print(f"Train Loss: {train_loss:.4f} | Val Loss: {val_loss:.4f}")
+        print(f"Train Loss: {train_loss:.4f} | Val Loss: {val_loss:.4f} | Time: {epoch_time:.1f}s")
         
         # Log to TensorBoard
         with summary_writer.as_default():
             tf.summary.scalar('loss/train', train_loss, step=epoch)
             tf.summary.scalar('loss/val', val_loss, step=epoch)
+            tf.summary.scalar('time/epoch', epoch_time, step=epoch)
         
         # Save best model
         if val_loss < best_val_loss:
@@ -187,8 +206,8 @@ def train(config_path='config.yaml'):
             model.save_weights(f'{checkpoint_dir}/best_model.weights.h5')
             print(f"  Saved best model (val_loss: {val_loss:.4f})")
         
-        # Save periodic checkpoint
-        if (epoch + 1) % 10 == 0:
+        # Save periodic checkpoint every 5 epochs
+        if (epoch + 1) % 5 == 0:
             model.save_weights(f'{checkpoint_dir}/epoch_{epoch+1}.weights.h5')
         
         # Reset generators
