@@ -92,6 +92,8 @@ Press `q` to quit the demo.
 
 ## Demo
 
+[Demo Video](https://drive.google.com/file/d/1kaKGhfCsm88bSJdHnoweMmzxm7pGj2_C/view?usp=sharing)
+
 Screen recordings of training, evaluation, and real-time detection are available in the repository.
 
 > **Demo Threshold**: Uses 0.3 confidence threshold to emphasize recall and visualize early-stage learning. Since the model is trained from scratch and confidence calibration is still developing, lower thresholds are useful for qualitative evaluation. Precision improves with additional training and threshold tuning.
